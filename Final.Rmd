@@ -1,0 +1,1015 @@
+---
+title: "Final"
+author: "Arshia Sharma, Betsy Heredia, Kayla Cho, Nawal Alasmari"
+subtitle: MGSC 310, Fall 2020, Zoom Professor Hersh
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(forcats)
+library(sjPlot)
+# As long as you are working in a Rstudio Project file, you shouldn't need to 'hard code' directories like this 
+# change to your own working directory
+# knitr::opts_knit$set(root.dir = 'C:/Users/hersh/Dropbox/Chapman/Teaching/MGSC_310/Fall_2019/problem_sets')
+# setwd('C:/Users/hersh/Dropbox/Chapman/Teaching/MGSC_310/Fall_2019/problem_sets')
+
+# set seed to your own favorite number
+set.seed(1818)
+options(width=70)
+options(scipen=99)
+
+
+# general rchunk code options
+
+# this sets text to small
+opts_chunk$set(tidy.opts=list(width.wrap=50),tidy=TRUE, size = "vsmall")  
+opts_chunk$set(message = FALSE,                                          
+               warning = FALSE,
+               # "caching" stores objects in code chunks and only rewrites if you change things
+               cache = TRUE,                               
+               # automatically downloads dependency files
+               autodep = TRUE,
+               # 
+               cache.comments = FALSE,
+               # 
+               collapse = TRUE,
+               fig.width = 5,  
+               fig.height = 4,
+               fig.align='center')
+
+
+```
+
+
+```{r}
+# if you get an error on loading libraries install package first
+# 
+library(ISLR)
+
+library("tidyverse")
+library('rsample')
+library("lubridate")
+library("groupdata2")
+
+options(scipen = 50)
+set.seed(1818)
+hotels <- read.csv(here::here("datasets", "hotel_bookings.csv"))
+
+hotels <- hotels %>% mutate(hotel = as.factor(hotel), is_canceled = as.factor(is_canceled),
+                            arrival_date_month = as.factor(arrival_date_month),
+                            meal = as.factor(meal),
+                            country = as.factor(country), market_segment = as.factor(market_segment), 
+                            agent = as.factor(agent), country = as.factor(country),
+                            company = as.factor(company),
+                            distribution_channel = as.factor(distribution_channel),
+                            is_repeated_guest = as.factor(is_repeated_guest),
+                            reserved_room_type = as.factor(reserved_room_type), 
+                            assigned_room_type = as.factor(assigned_room_type),
+                            deposit_type = as.factor(deposit_type), 
+                            customer_type = as.factor(customer_type),
+                            reservation_status = as.factor(reservation_status),
+                            reservation_status_date = mdy(reservation_status_date)) %>% select(-agent, -company, -reservation_status, -country, , -reservation_status_date)
+
+hotels <- hotels %>% filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(market_segment),
+             !is.na(adr))
+
+#splitting the data 80%-20%
+train_pop <- 0.80
+hotels_split <- initial_split(hotels, prop = train_pop)
+
+hotels_train <- hotels_split %>% training()
+hotels_test <- hotels_split %>% testing()
+
+hotels_train <-upsample(hotels_train, cat_col = "is_canceled")
+
+hotels_test <- subset(hotels_test, distribution_channel != "Undefined")
+```
+
+## 1. Looking over the database
+```{r}
+summary(hotels)
+
+glimpse(hotels)
+
+nlevels(hotels$agent)
+
+```
+
+## Data Visualizations 
+
+Cancellations Based on Assigned Room Type
+```{r}
+ggplot(hotels ,aes(x=factor(assigned_room_type),fill=factor(is_canceled)))+
+
+geom_bar()+
+ggtitle("Cancellations Based on Assigned Room Type")+
+  xlab("Assigned Room Type") +
+  ylab("Number of Bookings")+
+scale_fill_discrete(
+    name = "Canceled",
+    breaks = c("0", "1"),
+    label = c("No", "Yes"))+
+  theme(axis.text.x = element_text( size=12),axis.text.y = element_text(size=12))+
+  theme_minimal()
+```
+
+
+Cancellations Based on Reserved Room Types
+```{r}
+ggplot(hotels ,aes(x=factor(reserved_room_type),fill=factor(is_canceled)))+
+
+geom_bar()+
+ggtitle("Cancellations Based on Reserved Room Types")+
+  xlab("Reserved Room Type") +
+  ylab("Number of Bookings")+
+scale_fill_discrete(
+    name = "Canceled",
+    breaks = c("0", "1"),
+    label = c("No", "Yes"))+
+  theme(axis.text.x = element_text( size=12),axis.text.y = element_text(size=12))+ theme_minimal()
+```
+
+Cancellations Based on Hotel Type & Lead Time
+```{r}
+
+ggplot(hotels, aes(x=hotel,y=lead_time,fill=factor(is_canceled)))+
+  geom_boxplot(position="dodge")+
+    xlab(" Hotel Type ")+
+    ylab("Lead Time")+
+  ggtitle("Cancellations Based on Hotel Type & Lead Time")+
+scale_fill_discrete(
+    name = "Canceled",
+    breaks = c("0", "1"),
+    label = c("No", "Yes"))+
+  theme(axis.text.x = element_text( size=12),axis.text.y = element_text(size=12))+ theme_minimal()
+```
+
+
+Booking Status by Month
+```{r}
+ggplot(hotels, aes(arrival_date_month, fill = factor(is_canceled))) +
+
+geom_bar() +
+  
+coord_flip() + scale_fill_discrete(
+    name = "Canceled",
+    breaks = c("0", "1"),
+    label = c("No", "Yes")) +
+
+labs(title = "Booking Status by Month",
+       x = "Month",
+       y = "Count") + 
+
+theme(axis.text.x = element_text( size=12),axis.text.y = element_text(size=12))+
+  theme_minimal()
+
+```
+
+## 2. Logestic Regression
+
+```{r}
+
+library('forcats')
+
+hotels_mod1 <- glm(is_canceled ~ .,
+                     family = binomial,
+                     data = hotels_train)
+
+summary(hotels_mod1)
+
+
+"This code is written using the variable canceled variable - which is a column we have added to the dataframe that represents a binary number (1 or 0) that represents if the guest checked out (1) or cancelled/did not show (0). "
+```
+
+```{r}
+exp(hotels_mod1$coefficients)
+
+```
+
+Predictions
+```{r}
+
+scores_train <- predict(hotels_mod1, 
+                       type = "response")
+
+scores_test <- predict(hotels_mod1, 
+                       newdata = hotels_test %>% filter(complete.cases(is_canceled)),
+                       type = "response")
+
+head(scores_train)
+head(scores_test)
+```
+
+Residuals & Predictions
+```{r}
+library('yardstick')
+
+results_train <- data.frame(
+
+  `truth` = hotels_train   %>%  
+    filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.numeric(is_canceled)),
+   `Class1` =  scores_train,
+   `type` = rep("train",length(scores_train)),
+   `predicted` =  as.numeric(ifelse(scores_train> 0.4,1,0)))
+
+
+results_test <- data.frame(
+  `truth` = hotels_test   %>% 
+       filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.numeric(is_canceled)),
+   `Class1` =  scores_test,
+   `type` = rep("test",length(scores_test)),
+   `predicted` = as.numeric(ifelse(scores_test> 0.4,1,0))) 
+
+
+head(results_train)
+head(results_test)
+```
+
+Residuals & Predictions as factors
+```{r}
+#used for the correlation factors - have to change from numerical to factors
+
+results_train_cm <- data.frame(
+
+  `truth` = hotels_train   %>%  
+    filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.factor(is_canceled)),
+   `Class1` =  scores_train,
+   `type` = rep("train",length(scores_train)),
+   `predicted` =  as.factor(ifelse(scores_train> 0.4,1,0)))
+
+
+results_test_cm <- data.frame(
+  `truth` = hotels_test   %>% 
+       filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.factor(is_canceled)),
+   `Class1` =  scores_test,
+   `type` = rep("test",length(scores_test)),
+   `predicted` = as.factor(ifelse(scores_test> 0.4,1,0))) 
+```
+
+
+```{r}
+library('ggplot2')
+library('plotROC')
+library('yardstick')
+
+ROC_train <- ggplot(results_train, 
+            aes(m = Class1, d = is_canceled)) + 
+  geom_roc(labelsize = 3.5, 
+           cutoffs.at = 
+             c(0.99,0.9,0.7,0.5,0.3,0.1,0)) +
+  theme_minimal(base_size = 16) + ggtitle("Logistic Model of Train Dataset")
+print(ROC_train)
+
+ROC_test <- ggplot(results_test, 
+            aes(m = Class1, d = is_canceled)) + 
+  geom_roc(labelsize = 3.5, 
+           cutoffs.at = 
+             c(0.99,0.9,0.7,0.5,0.3,0.1,0)) +
+  theme_minimal(base_size = 16)+ ggtitle("Logistic Model of Test Dataset")
+print(ROC_test)
+```
+
+AUC Scores
+```{r}
+
+AUC_train <- calc_auc(ROC_train)
+print(AUC_train)
+
+
+AUC_test <- calc_auc(ROC_test)
+print(AUC_test) 
+
+```
+Confusion Matrix
+```{r}
+
+cm_train <- conf_mat(results_train_cm, 
+               truth = is_canceled,
+               estimate = predicted)
+
+cm_test <- conf_mat(results_test_cm, 
+               truth = is_canceled,
+               estimate = predicted)
+
+print(cm_train)
+print(cm_test)
+
+```
+
+R2, RMSE and Mean Absolute Error predictions.
+```{r}
+
+library(yardstick)
+calc_train <-  data.frame(
+  `truth` = results_train$is_canceled,
+  `predicted` = results_train$predicted
+)
+
+calc_test <-  data.frame(
+  `truth` = results_test$is_canceled,
+  `predicted` = results_test$predicted
+)
+
+print(metrics(calc_train,truth, predicted))
+print(metrics(calc_test,truth, predicted))
+
+```
+```{r}
+summary(cm_train)
+summary(cm_test)
+```
+## 3.Predict Cancellations using Elastic Net
+
+```{r}
+library('tidyverse')
+library('rsample')
+library('glmnet')
+library('glmnetUtils')
+library('forcats')
+library('broom')
+```
+1. Elastic Net testing different alphas using 20,000 sample data points from hotels_train 
+
+```{r}
+set.seed(1818)
+train_sample = sample_n(hotels_train, 20000)
+```
+
+```{r}
+
+enet_mod_all <- cva.glmnet(is_canceled ~ .,
+                       data = train_sample,
+                       family = "binomial",
+                       alpha = seq(0,1, by = 0.05))
+
+```
+
+Min Loss Plot
+
+```{r}
+minlossplot(enet_mod_all,
+cv.type = "min")
+```
+
+```{r}
+#to find the best alpha
+get_alpha <- function(fit) {
+  alpha <- fit$alpha
+  error <- sapply(fit$modlist, 
+                  function(mod) {min(mod$cvm)})
+  alpha[which.min(error)]
+}
+
+# Get all parameters.
+get_model_params <- function(fit) {
+  alpha <- fit$alpha
+  lambdaMin <- sapply(fit$modlist, `[[`, "lambda.min")
+  lambdaSE <- sapply(fit$modlist, `[[`, "lambda.1se")
+  error <- sapply(fit$modlist, function(mod) {min(mod$cvm)})
+  best <- which.min(error)
+  data.frame(alpha = alpha[best], lambdaMin = lambdaMin[best],
+             lambdaSE = lambdaSE[best], eror = error[best])
+}
+
+# BEST MODEL 
+# extract the best alpha value and model parameters
+best_alpha <- get_alpha(enet_mod_all)
+get_model_params(enet_mod_all)
+
+# extract the best model object
+best_mod <- enet_mod_all$modlist[[which(enet_mod_all$alpha == best_alpha)]]
+```
+
+2. Created another model using best alpha & full training set
+```{r}
+
+enet_mod2 <- cv.glmnet(is_canceled ~ .,
+                       data = hotels_train,
+                       family = "binomial",
+                       alpha = 1)
+
+```
+
+Binomial Deviance Plot
+```{r}
+plot(enet_mod2)
+print(enet_mod2$lambda.min)
+# 
+print(enet_mod2$lambda.1se)
+```
+
+Elastic Net Coefficients
+```{r}
+enet_coefs2 <- data.frame(
+  `lasso_min` = coef(enet_mod2, s = enet_mod2$lambda.min) %>%
+    as.matrix() %>% data.frame() %>% round(3),
+  `lasso_1se` = coef(enet_mod2 , s = enet_mod2$lambda.1se) %>% 
+    as.matrix() %>% data.frame() %>% round(3)
+) %>%  rename(`enet_min` = 1, `enet_1se` = 2)  %>% 
+print(enet_coefs2)
+```
+
+Coefficient Plot
+```{r}
+library ("coefplot")
+coefpath(enet_mod2)
+```
+
+
+Scores for Train & Test
+```{r}
+library('yardstick')
+
+scores_train_tree <- predict(enet_mod2, 
+                             newdata = hotels_train,
+                             type = "response")
+
+
+scores_test_tree <- predict(enet_mod2, 
+                            newdata = hotels_test,
+                            type = "response")
+
+head(scores_train_tree)
+head(scores_test_tree)
+```
+
+Results for Train & Test
+
+```{r}
+library('yardstick')
+
+results_train2 <- data.frame(
+
+  `truth` = hotels_train   %>%  
+    filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.factor(is_canceled)),
+   `Class1` =  scores_train_tree,
+   `type` = rep("train",length(scores_train_tree)),
+   `predicted` = as.factor(ifelse(scores_train_tree> 0.4,1,0)))
+
+
+results_test2 <- data.frame(
+  `truth` = hotels_test   %>% 
+       filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.factor(is_canceled)),
+   `Class1` =  scores_test_tree,
+   `type` = rep("test",length(scores_test_tree)),
+   `predicted` = as.factor(ifelse(scores_test_tree> 0.4,1,0))) 
+
+
+head(results_train2)
+head(results_test2)
+
+```
+
+Confusion Matrix for Train & Test
+```{r}
+
+cm_train <- conf_mat(results_train2, 
+                      truth = is_canceled,
+                      estimate = predicted)
+print(cm_train)              
+
+cm_test <- conf_mat(results_test2, 
+                truth = is_canceled,
+                estimate = predicted)
+print(cm_test) 
+
+```
+
+Accuracy, Specificity, & Sensitivity for Train & Test
+```{r}
+
+summary(cm_train)
+summary(cm_test)
+
+```
+
+```{r}
+library('yardstick')
+
+results_train3 <- data.frame(
+
+  `truth` = hotels_train   %>%  
+    filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.numeric(is_canceled)),
+   `Class1` =  scores_train_tree,
+   `type` = rep("train",length(scores_train_tree)),
+   `predicted` = as.numeric(ifelse(scores_train_tree> 0.4,1,0)))
+
+
+results_test3 <- data.frame(
+  `truth` = hotels_test   %>% 
+       filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+             !is.na(arrival_date_year),
+             !is.na(arrival_date_week_number),
+             !is.na(arrival_date_day_of_month),
+             !is.na(stays_in_week_nights),
+             !is.na(stays_in_weekend_nights),
+             !is.na(adults),
+             !is.na(children),
+             !is.na(babies),
+             !is.na(meal),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+             !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+             !is.na(deposit_type),
+             !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+             !is.na(total_of_special_requests),
+             !is.na(required_car_parking_spaces),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.numeric(is_canceled)),
+   `Class1` =  scores_test_tree,
+   `type` = rep("test",length(scores_test_tree)),
+   `predicted` = as.numeric(ifelse(scores_test_tree> 0.4,1,0))) 
+
+
+head(results_train3)
+head(results_test3)
+
+```
+
+R2 
+```{r}
+rsq(results_train3, is_canceled, predicted)
+rsq(results_test3, is_canceled, predicted)
+```
+
+1. Elastic Net testing different alphas using entire hotels_train (after presentation)
+```{r}
+
+enet_mod_all2 <- cva.glmnet(is_canceled ~ .,
+                       data = hotels_train,
+                       family = "binomial",
+                       alpha = seq(0,1, by = 0.05))
+
+```
+
+
+```{r}
+minlossplot(enet_mod_all2,
+cv.type = "min")
+```
+
+```{r}
+#to find the best alpha
+get_alpha <- function(fit) {
+  alpha <- fit$alpha
+  error <- sapply(fit$modlist, 
+                  function(mod) {min(mod$cvm)})
+  alpha[which.min(error)]
+}
+
+# Get all parameters.
+get_model_params <- function(fit) {
+  alpha <- fit$alpha
+  lambdaMin <- sapply(fit$modlist, `[[`, "lambda.min")
+  lambdaSE <- sapply(fit$modlist, `[[`, "lambda.1se")
+  error <- sapply(fit$modlist, function(mod) {min(mod$cvm)})
+  best <- which.min(error)
+  data.frame(alpha = alpha[best], lambdaMin = lambdaMin[best],
+             lambdaSE = lambdaSE[best], eror = error[best])
+}
+
+# BEST MODEL 
+# extract the best alpha value and model parameters
+best_alpha <- get_alpha(enet_mod_all)
+get_model_params(enet_mod_all)
+
+# extract the best model object
+best_mod <- enet_mod_all$modlist[[which(enet_mod_all$alpha == best_alpha)]]
+```
+
+Modified dataset based on lasso coefficient importance
+```{r}
+hotels_train_clean2 <- hotels_train %>% mutate(market_segment = fct_other(market_segment, drop= c("Aviation", "Groups", "Undefined")),
+                                              reserved_room_type =fct_other(reserved_room_type, drop= c( "D", "H", "L")),
+distribution_channel=fct_other(distribution_channel, drop=c( "TA/TO", "Undefined")),
+assigned_room_type = fct_other(assigned_room_type, drop=c("C,", "D", "H")))
+
+hotels_test_clean2 <- hotels_test %>% mutate(market_segment = fct_other(market_segment, drop= c("Aviation", "Groups", "Undefined")),
+                                              reserved_room_type =fct_other(reserved_room_type, drop= c( "D", "H", "L")),
+distribution_channel=fct_other(distribution_channel, drop=c( "TA/TO", "Undefined")),
+assigned_room_type = fct_other(assigned_room_type, drop=c("C,", "D", "H")))
+
+```
+
+## 4.Predict Cancellations using Decision Tree
+
+Prune the tree
+```{r}
+library(rpart)
+hotel_mod_rpart <- rpart(is_canceled ~ ., 
+                           data = hotels_train_clean2,
+                           method = "class",
+                           control = list(cp = 0, 
+                                          minsplit = 5,
+                                          maxdepth = 8))
+plotcp(hotel_mod_rpart)
+
+```
+
+Create decision tree with maximum depth of 12
+```{r }
+library('partykit') 
+
+hotel_tree_12<- ctree(is_canceled ~ ., 
+                    
+                      data = hotels_train_clean2,
+                    
+                     maxdepth = 12,
+                    )
+
+plot(hotel_tree_12, gp = gpar(fontsize = 6))
+
+```
+
+Create Predictions
+```{r}
+library('yardstick')
+
+scores_train_tree <- predict(hotel_tree_12, 
+                       type = "response")
+
+
+scores_test_tree <- predict(hotel_tree_12, 
+                       newdata = hotels_test_clean2,
+                       type = "response")
+
+head(scores_train_tree)
+head(scores_test_tree)
+```
+
+Make Results Tables
+```{r}
+
+results_train_tree <- data.frame(
+  `truth` = hotels_train_clean2   %>%  
+    filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+           !is.na(arrival_date_year),
+           !is.na(arrival_date_week_number),
+           !is.na(arrival_date_day_of_month),
+           !is.na(stays_in_weekend_nights),
+           !is.na(stays_in_week_nights),
+             !is.na(adults),
+           !is.na(children),
+           !is.na(babies),
+             !is.na(meal),
+             !is.na(market_segment),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+           !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+              !is.na(deposit_type),
+           !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+           !is.na(required_car_parking_spaces),
+             !is.na(total_of_special_requests),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.numeric(ifelse(is_canceled == 0,"0","1"))),
+   `type` = rep("train",length(scores_train_tree)),
+   `predicted` = as.numeric(ifelse(scores_train_tree == 0,"0","1")))
+
+
+results_test_tree <- data.frame(
+  `truth` = hotels_test_clean2   %>% 
+       filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+           !is.na(arrival_date_year),
+           !is.na(arrival_date_week_number),
+           !is.na(arrival_date_day_of_month),
+           !is.na(stays_in_weekend_nights),
+           !is.na(stays_in_week_nights),
+             !is.na(adults),
+           !is.na(children),
+           !is.na(babies),
+             !is.na(meal),
+             !is.na(market_segment),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+           !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+              !is.na(deposit_type),
+           !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+           !is.na(required_car_parking_spaces),
+             !is.na(total_of_special_requests),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.numeric(ifelse(is_canceled == 0,"0","1"))),
+   `type` = rep("test",length(scores_test_tree)),
+   `predicted` = as.numeric(ifelse(scores_test_tree == 0,"0","1"))) 
+
+
+head(results_train_tree)
+head(results_test_tree)
+```
+
+Decision tree RMSE and RSQ 
+```{r}
+library('yardstick')
+rmse(results_train_tree, is_canceled, predicted)
+rmse(results_test_tree, is_canceled, predicted)
+rsq(results_train_tree, is_canceled, predicted)
+rsq(results_test_tree, is_canceled, predicted)
+```
+
+Confusion Matrix
+```{r}
+results_test_tree_factor <- data.frame(
+  `truth` = hotels_test_clean2   %>%  
+    filter(!is.na(is_canceled),
+             !is.na(hotel),
+             !is.na(lead_time),
+             !is.na(arrival_date_month),
+           !is.na(arrival_date_year),
+           !is.na(arrival_date_week_number),
+           !is.na(arrival_date_day_of_month),
+           !is.na(stays_in_weekend_nights),
+           !is.na(stays_in_week_nights),
+             !is.na(adults),
+           !is.na(children),
+           !is.na(babies),
+             !is.na(meal),
+             !is.na(market_segment),
+             !is.na(distribution_channel),
+             !is.na(is_repeated_guest),
+             !is.na(previous_cancellations),
+           !is.na(previous_bookings_not_canceled),
+             !is.na(reserved_room_type),
+             !is.na(assigned_room_type),
+             !is.na(booking_changes),
+              !is.na(deposit_type),
+           !is.na(days_in_waiting_list),
+             !is.na(customer_type),
+           !is.na(required_car_parking_spaces),
+             !is.na(total_of_special_requests),
+             !is.na(adr))  %>% 
+    select(is_canceled) %>% 
+    mutate(is_canceled = as.factor(ifelse(is_canceled == 0,"0","1"))),
+   `type` = rep("train",length(scores_test_tree)),
+   `predicted` = as.factor(ifelse(scores_test_tree == 0,"0","1")))
+
+
+confusion_matrix  <- conf_mat(results_test_tree_factor, 
+               truth = is_canceled,
+               estimate = predicted)
+print(confusion_matrix)
+
+```
+
+Get accuracy through summary
+```{r}
+summary(confusion_matrix)
+```
+
+Create and plot decision tree with maximum depth of 4
+```{r}
+library(partykit) 
+
+hotel_tree_4 <- ctree(is_canceled ~ ., 
+                    
+                      data = hotels_train_clean2,
+                    
+                     maxdepth = 4,
+                    )
+
+plot(hotel_tree_4, gp = gpar(fontsize = 6))
+
+```
